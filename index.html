@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=1.0">
+    <title>集合樂園｜雲端互動學習系統</title>
+   
+    <!-- SheetJS - Excel 處理 -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+   
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, get, update, push, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyCFA_ZBXXqEXAewniPQZ0wxYRK6PT4Nuys",
+            authDomain: "math-cck-set.firebaseapp.com",
+            projectId: "math-cck-set",
+            storageBucket: "math-cck-set.firebasestorage.app",
+            messagingSenderId: "444558726597",
+            appId: "1:444558726597:web:edcd6f1acddec4d00a67ac",
+            measurementId: "G-73PNBSX8LK",
+            databaseURL: "https://math-cck-set-default-rtdb.asia-southeast1.firebasedatabase.app"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        window.rdb = { db, ref, set, get, update, push, remove };
+        console.log('✅ Firebase 已成功初始化');
+    </script>
+
+    <!-- 題庫資料庫（最重要的修正！） -->
+    <script src="js/data/database.js"></script>
+
+    <!-- 樣式 -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- 登入模態框 -->
+<div id="login-modal" class="modal-overlay active">
+    <div class="modal-content">
+        <h2>🍎 集合樂園 · 雲端登入</h2>
+        <div style="background: #f9f9f9; padding: 20px; border-radius: 30px; margin-bottom: 20px;">
+            <input type="text" id="login-name" placeholder="請輸入姓名，進度自動同步" style="width:80%; padding:15px; margin-bottom:15px; border-radius:30px; border:2px solid #ffcd94; text-align:center; font-size:16px;">
+            <button class="action-btn btn-primary" id="start-login-btn">開始學習</button>
+        </div>
+        <button style="background:none; border:none; color:#888; text-decoration:underline;" id="show-admin-login">⚙️ 教師後台入口</button>
+    </div>
+</div>
+
+<!-- 教師後台登入 -->
+<div id="admin-login-modal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>⚙️ 教師驗證</h3>
+        <input type="password" id="admin-pass" placeholder="輸入管理員密碼" style="width:80%; padding:12px; margin:15px; border-radius:30px; border:1px solid #ddd; text-align:center;">
+        <button class="action-btn btn-primary" id="admin-login-btn">驗證登入</button>
+        <button style="margin-top:10px; background:none; border:none; color:red;" id="cancel-admin-login">取消</button>
+    </div>
+</div>
+
+<!-- 教師後台面板 -->
+<div id="admin-panel-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 850px; text-align: left;">
+        <h2 style="margin-top:0; color:#b45f2b;">📊 全體學生監控面板</h2>
+        <div class="admin-toolbar">
+            <button class="btn-export" id="export-excel-btn">📥 匯出 Excel 報表</button>
+            <div class="file-input-wrapper" style="position:relative; display:inline-block;">
+                <button class="btn-import">📤 匯入 Excel 檔案</button>
+                <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="position:absolute; opacity:0; width:100%; height:100%; left:0; top:0; cursor:pointer;">
+            </div>
+            <button class="btn" id="download-template-btn">📋 下載範本</button>
+        </div>
+        <div style="max-height: 400px; overflow-y: auto;">
+            <h4>📈 學生學習時長與進度</h4>
+            <table class="rank-table"><thead><tr><th>姓名</th><th>累積時長</th><th>最後活動</th></tr></thead><tbody id="admin-usage-body"></tbody></table>
+            <h4 style="margin-top:20px;">🏆 全班最新過關紀錄</h4>
+            <table class="rank-table"><thead><tr><th>學生</th><th>單元</th><th>耗時</th><th>答對/答錯</th><th>時間</th><th>操作</th></tr></thead><tbody id="admin-record-body"></tbody></table>
+        </div>
+        <button class="action-btn" style="margin-top:20px; background:#ffb347;" id="close-admin-panel">關閉</button>
+    </div>
+</div>
+
+<!-- 排行榜模態框 -->
+<div id="leaderboard-modal" class="modal-overlay">
+    <div class="modal-content">
+        <h2 style="color:#b45f2b;">🏆 挑戰成功！</h2>
+        <p>你完成了本單元，以下是雲端即時排名：</p>
+        <table class="rank-table"><thead><tr><th>排名</th><th>學生</th><th>答對</th><th>答錯</th><th>用時</th></tr></thead><tbody id="lb-body"></tbody></table>
+        <button class="action-btn btn-primary" style="margin-top:20px;" id="close-leaderboard-btn">繼續探索</button>
+    </div>
+</div>
+
+<!-- 各單元完成模態框 -->
+<div id="basicModal" class="modal-overlay"><div class="modal-content"><h3>🎉 集合小英雄 🎉</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>什麼是「集合」？</strong></p><p>把具有相同特徵的東西放在一起，就是一個<strong>集合</strong>。</p><p>✅ 屬於：如果東西在集合裡，就是「屬於」這個集合。</p><p>📌 例如：{ 🍎, 🍌, 🍓 } 就是「水果集合」。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 恭喜你完成了基礎集合概念的挑戰！</div></div><button class="modal-close action-btn" data-modal="basicModal">繼續探索</button></div></div>
+<div id="notationCompleteModal" class="modal-overlay"><div class="modal-content"><h3>📝 列舉法與描述法</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>列舉法</strong>：將所有元素列出，如 { 🍎, 🍌, 🍓 }。</p><p>✨ <strong>描述法</strong>：用條件描述，如 { x | x 是水果 }。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 你已能靈活轉換列舉法與描述法！</div></div><button class="modal-close action-btn" data-modal="notationCompleteModal">繼續探索</button></div></div>
+<div id="intersectionCompleteModal" class="modal-overlay"><div class="modal-content"><h3>🔗 交集 (Intersection)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>交集</strong> 是指兩個集合中<strong>共同擁有</strong>的元素。</p><p>📖 記作 <strong>A ∩ B</strong>，意思是「同時屬於A和B」的東西。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 例如：集合A = { 紅色物品 }，集合B = { 水果 }<br>交集 = { 紅色水果 } 如 🍎 蘋果、🍓 草莓。</div></div><button class="modal-close action-btn" data-modal="intersectionCompleteModal">繼續探索</button></div></div>
+<div id="unionCompleteModal" class="modal-overlay"><div class="modal-content"><h3>🧩 併集 (Union)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>併集</strong> 是把兩個集合的<strong>所有元素</strong>合在一起。</p><p>📖 記作 <strong>A ∪ B</strong>，包含所有屬於A或屬於B的元素。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 例如：集合A = { 貓, 狗 }，集合B = { 狗, 兔子 }<br>併集 = { 貓, 狗, 兔子 }。</div></div><button class="modal-close action-btn" data-modal="unionCompleteModal">繼續探索</button></div></div>
+<div id="subsetBasicModal" class="modal-overlay"><div class="modal-content"><h3>📂 子集 (Subset)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>子集</strong>：如果集合 A 的所有元素都屬於集合 B，則 A 是 B 的子集。</p><p>📖 符號記作 <strong>A ⊆ B</strong>（A 包含於 B）。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 你已經學會判斷子集！接下來挑戰「真子集」分辨遊戲吧！</div></div><button class="modal-close action-btn" data-modal="subsetBasicModal">繼續探索</button></div></div>
+<div id="properSubsetModal" class="modal-overlay"><div class="modal-content"><h3>📂 真子集 (Proper Subset)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>真子集</strong>：如果 A ⊆ B 且 A ≠ B，則 A 是 B 的真子集。</p><p>📖 符號記作 <strong>A ⊂ B</strong>。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 例如：{ 紅色水果 } ⊂ { 水果 }<br>{ 水果 } ⊆ { 水果 }（相等，所以不是真子集）</div></div><button class="modal-close action-btn" data-modal="properSubsetModal">繼續探索</button></div></div>
+<div id="differenceCompleteModal" class="modal-overlay"><div class="modal-content"><h3>🌍 全集與差集</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>全集 U</strong>：所有被考慮的對象。</p><p>✨ <strong>差集 A - B</strong>：在 A 中但不在 B 中的元素。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 你已經學會了全集與差集！</div></div><button class="modal-close action-btn" data-modal="differenceCompleteModal">繼續探索</button></div></div>
+
+<!-- 頂部導航欄 -->
+<header class="app-header">
+    <div class="header-left">
+        <button class="menu-toggle-btn" id="toggle-sidebar-btn">☰</button>
+        <span class="app-title">📐 集合樂園</span>
+    </div>
+    <div class="header-right">
+        <div class="user-info" id="display-username-header"><span>👤</span><span id="header-username">未登入</span></div>
+        <button class="logout-btn" id="logout-btn" style="display: none;"><span>🚪</span> 登出</button>
+    </div>
+</header>
+
+<div class="app-layout">
+    <nav class="sidebar" id="left-sidebar">
+        <div class="main-title"><span>📐 集合</span><span class="user-badge" id="display-username-side">👤 未登入</span></div>
+        <ul class="nav-menu" id="nav-menu"></ul>
+        <div style="padding:20px; font-size:14px; color:#7b4a2e;" id="session-timer">⏳ 本次學習: 00:00</div>
+    </nav>
+    <div class="content-area" id="contentArea"></div>
+</div>
+
+<!-- 右側懸浮排行榜 -->
+<aside id="right-rank-sidebar">
+    <div class="rank-trigger">🏆 即 時 排 行</div>
+    <div class="rank-panel">
+        <button class="rank-close-btn">✕</button>
+        <h4>本關 Top 10</h4>
+        <table class="rank-table"><thead><tr><th>學生</th><th>✅</th><th>❌</th><th>用時</th></tr></thead><tbody id="panel-body">目前無紀錄</tbody></table>
+    </div>
+</aside>
+
+<!-- 主程式入口 -->
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
