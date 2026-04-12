@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教師後台 · 集合樂園</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'PingFang TC', sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 32px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+        }
+        h1 { color: #0f172a; margin-top: 0; }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 10px 24px;
+            font-size: 1.1rem;
+            border-radius: 30px;
+            cursor: pointer;
+            color: #475569;
+        }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .panel {
+            display: none;
+        }
+        .panel.active {
+            display: block;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 30px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+        .btn-primary {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        input, select {
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #cbd5e1;
+            font-size: 0.95rem;
+        }
+        .editor-table input {
+            width: 95%;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <h1>📊 教師後台管理</h1>
+        
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="overview">📋 班級總覽</button>
+            <button class="tab-btn" data-tab="examRevision">📝 測考溫習區管理</button>
+            <button class="tab-btn" data-tab="export">📤 匯出資料</button>
+        </div>
+        
+        <!-- 班級總覽面板 (原有功能簡化保留) -->
+        <div id="overviewPanel" class="panel active">
+            <h3>學生學習進度</h3>
+            <div id="progressTable">載入中...</div>
+        </div>
+        
+        <!-- 測考溫習區管理面板 (新增) -->
+        <div id="examRevisionPanel" class="panel">
+            <h3>📝 概念填空題管理</h3>
+            <div style="margin-bottom: 20px;">
+                <label>選擇工作紙：</label>
+                <select id="worksheetSelect" style="min-width:200px;">
+                    <option value="ws1">工作紙1 (集合概念填充)</option>
+                </select>
+                <button class="btn" id="loadWorksheetBtn">載入</button>
+                <button class="btn btn-primary" id="newWorksheetBtn">➕ 新增工作紙</button>
+            </div>
+            
+            <div id="questionsEditor">
+                <!-- 動態生成編輯表格 -->
+            </div>
+            
+            <div style="margin-top: 24px;">
+                <button class="btn btn-primary" id="saveWorksheetBtn">💾 儲存到 Firebase</button>
+                <button class="btn" id="exportJsonBtn">📤 匯出 JSON</button>
+                <input type="file" id="importJsonInput" accept=".json" style="display:none;" />
+                <button class="btn" id="importJsonBtn">📥 匯入 JSON</button>
+            </div>
+            <p style="color:#64748b; margin-top:20px;">💡 提示：題目中用 ______ 表示填空。答案與選項用逗號分隔，多個填空的選項用「|」分隔。</p>
+        </div>
+        
+        <!-- 匯出面板 -->
+        <div id="exportPanel" class="panel">
+            <h3>匯出學習記錄</h3>
+            <button class="btn btn-primary" id="exportCsvBtn">下載 CSV</button>
+            <p>可將全班數據匯出為 Excel 可讀格式。</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getDatabase, ref, set, get, child, update } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+        
+        // 你的 Firebase 配置 (請替換為你自己的)
+        const firebaseConfig = {
+            apiKey: "AIzaSyD-xxxxxx",
+            authDomain: "math-cck-set.firebaseapp.com",
+            databaseURL: "https://math-cck-set-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "math-cck-set",
+            storageBucket: "math-cck-set.appspot.com",
+            messagingSenderId: "xxxxxx",
+            appId: "1:xxxxxx:web:xxxxxx"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        // 切換頁籤
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                const tab = btn.dataset.tab;
+                document.getElementById(tab + 'Panel').classList.add('active');
+                if (tab === 'examRevision') loadWorksheetList();
+                if (tab === 'overview') loadProgressOverview();
+            });
+        });
+        
+        // 載入班級總覽
+        async function loadProgressOverview() {
+            const container = document.getElementById('progressTable');
+            const snapshot = await get(child(ref(db), 'users'));
+            if (snapshot.exists()) {
+                const users = snapshot.val();
+                let html = '<table><tr><th>學生</th><th>答對題數</th><th>總時長(秒)</th><th>最後登入</th></tr>';
+                Object.entries(users).forEach(([uid, data]) => {
+                    html += `<tr><td>${data.displayName || uid}</td><td>${data.correct || 0}</td><td>${data.totalTime || 0}</td><td>${data.lastLogin || ''}</td></tr>`;
+                });
+                html += '</table>';
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = '<p>尚無學生資料</p>';
+            }
+        }
+        
+        // ---------- 測考溫習區管理邏輯 ----------
+        let currentWorksheetId = 'ws1';
+        let currentQuestions = [];
+        
+        async function loadWorksheetList() {
+            const snapshot = await get(child(ref(db), 'examRevision/worksheets'));
+            const select = document.getElementById('worksheetSelect');
+            select.innerHTML = '';
+            if (snapshot.exists()) {
+                const sheets = snapshot.val();
+                Object.keys(sheets).forEach(key => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = sheets[key].title || key;
+                    select.appendChild(option);
+                });
+            } else {
+                // 預設 ws1
+                const option = document.createElement('option');
+                option.value = 'ws1';
+                option.textContent = '工作紙1 (集合概念填充)';
+                select.appendChild(option);
+            }
+        }
+        
+        async function loadWorksheetForEdit() {
+            const id = document.getElementById('worksheetSelect').value;
+            currentWorksheetId = id;
+            const snapshot = await get(child(ref(db), `examRevision/worksheets/${id}/questions`));
+            currentQuestions = snapshot.exists() ? snapshot.val() : [];
+            renderQuestionsEditor();
+        }
+        
+        function renderQuestionsEditor() {
+            const container = document.getElementById('questionsEditor');
+            let html = `<table class="editor-table"><tr><th>#</th><th>題目 (______ 為填空)</th><th>答案</th><th>選項 (7個,逗號分隔)</th><th></th></tr>`;
+            
+            currentQuestions.forEach((q, idx) => {
+                const answers = q.blanks.map(b => b.correct).join(',');
+                const opts = q.blanks.map(b => b.options.join(',')).join(' | ');
+                html += `<tr>
+                    <td>${idx+1}</td>
+                    <td><input type="text" value="${q.q.replace(/"/g, '&quot;')}" data-qidx="${idx}" class="q-input" /></td>
+                    <td><input type="text" value="${answers}" data-qidx="${idx}" class="a-input" style="width:120px;" /></td>
+                    <td><input type="text" value="${opts}" data-qidx="${idx}" class="opt-input" style="width:280px;" /></td>
+                    <td><button class="btn-delete" data-qidx="${idx}">刪除</button></td>
+                </tr>`;
+            });
+            
+            // 新增空白列
+            html += `<tr>
+                <td>+</td>
+                <td><input type="text" id="newQ" placeholder="新題目..." /></td>
+                <td><input type="text" id="newA" placeholder="答案1,答案2" /></td>
+                <td><input type="text" id="newOpt" placeholder="選項1,選項2|選項A,選項B" /></td>
+                <td><button id="addQuestionBtn">新增</button></td>
+            </tr>`;
+            html += `</table>`;
+            container.innerHTML = html;
+            
+            document.querySelectorAll('.btn-delete').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = e.target.dataset.qidx;
+                    currentQuestions.splice(idx, 1);
+                    renderQuestionsEditor();
+                });
+            });
+            
+            document.getElementById('addQuestionBtn').addEventListener('click', addNewQuestion);
+        }
+        
+        function addNewQuestion() {
+            const qInput = document.getElementById('newQ');
+            const aInput = document.getElementById('newA');
+            const optInput = document.getElementById('newOpt');
+            const qText = qInput.value.trim();
+            const answers = aInput.value.split(',').map(s => s.trim());
+            const optsGroups = optInput.value.split('|').map(s => s.trim());
+            
+            if (!qText) return;
+            
+            const blanks = [];
+            const blankCount = (qText.match(/______/g) || []).length;
+            for (let i = 0; i < blankCount; i++) {
+                let opts = (optsGroups[i] || '').split(',').map(s => s.trim());
+                if (opts.length < 7) {
+                    const pool = ['集合','元素','∈','空集','有限集','無限集','N','Z','Q','R','確定性','無序性','互異性'];
+                    while(opts.length < 7) {
+                        const rand = pool[Math.floor(Math.random()*pool.length)];
+                        if (!opts.includes(rand)) opts.push(rand);
+                    }
+                }
+                blanks.push({ correct: answers[i] || '', options: opts.slice(0,7) });
+            }
+            currentQuestions.push({ q: qText, blanks });
+            renderQuestionsEditor();
+            qInput.value = aInput.value = optInput.value = '';
+        }
+        
+        async function saveWorksheet() {
+            const qInputs = document.querySelectorAll('.q-input');
+            const aInputs = document.querySelectorAll('.a-input');
+            const optInputs = document.querySelectorAll('.opt-input');
+            const newQuestions = [];
+            
+            for (let i = 0; i < qInputs.length; i++) {
+                const qText = qInputs[i].value;
+                const answers = aInputs[i].value.split(',').map(s => s.trim());
+                const optsGroups = optInputs[i].value.split('|').map(s => s.trim());
+                const blanks = [];
+                const blankCount = (qText.match(/______/g) || []).length;
+                for (let j = 0; j < blankCount; j++) {
+                    let opts = (optsGroups[j] || '').split(',').map(s => s.trim());
+                    if (opts.length < 7) {
+                        const pool = ['集合','元素','∈','空集','有限集','無限集','N','Z','Q','R','確定性','無序性','互異性'];
+                        while(opts.length < 7) {
+                            const rand = pool[Math.floor(Math.random()*pool.length)];
+                            if (!opts.includes(rand)) opts.push(rand);
+                        }
+                    }
+                    blanks.push({ correct: answers[j] || '', options: opts.slice(0,7) });
+                }
+                newQuestions.push({ q: qText, blanks });
+            }
+            
+            const title = document.getElementById('worksheetSelect').selectedOptions[0].textContent;
+            await set(ref(db, `examRevision/worksheets/${currentWorksheetId}`), {
+                title: title,
+                questions: newQuestions,
+                updated: new Date().toISOString()
+            });
+            alert('✅ 儲存成功！');
+        }
+        
+        // 事件綁定
+        document.getElementById('loadWorksheetBtn').addEventListener('click', loadWorksheetForEdit);
+        document.getElementById('saveWorksheetBtn').addEventListener('click', saveWorksheet);
+        document.getElementById('newWorksheetBtn').addEventListener('click', () => {
+            const newId = prompt('輸入工作紙 ID (英文數字)');
+            if (newId) {
+                currentWorksheetId = newId;
+                currentQuestions = [];
+                renderQuestionsEditor();
+                const select = document.getElementById('worksheetSelect');
+                const option = document.createElement('option');
+                option.value = newId;
+                option.textContent = newId;
+                select.appendChild(option);
+                select.value = newId;
+            }
+        });
+        document.getElementById('exportJsonBtn').addEventListener('click', () => {
+            const dataStr = JSON.stringify(currentQuestions, null, 2);
+            const blob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `worksheet_${currentWorksheetId}.json`;
+            a.click();
+        });
+        document.getElementById('importJsonBtn').addEventListener('click', () => {
+            document.getElementById('importJsonInput').click();
+        });
+        document.getElementById('importJsonInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const imported = JSON.parse(ev.target.result);
+                    if (Array.isArray(imported)) {
+                        currentQuestions = imported;
+                        renderQuestionsEditor();
+                    } else {
+                        alert('格式錯誤：應為題目陣列');
+                    }
+                } catch (ex) {
+                    alert('JSON 解析失敗');
+                }
+            };
+            reader.readAsText(file);
+        });
+        
+        // 匯出 CSV (簡單示例)
+        document.getElementById('exportCsvBtn').addEventListener('click', async () => {
+            const snapshot = await get(child(ref(db), 'users'));
+            if (!snapshot.exists()) return;
+            const users = snapshot.val();
+            let csv = "學生,答對題數,總時長(秒)\n";
+            Object.entries(users).forEach(([uid, data]) => {
+                csv += `${data.displayName || uid},${data.correct || 0},${data.totalTime || 0}\n`;
+            });
+            const blob = new Blob(["\uFEFF" + csv], {type: 'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'progress.csv';
+            a.click();
+        });
+        
+        // 初始化載入總覽
+        loadProgressOverview();
+    </script>
+</body>
+</html>

@@ -68,3 +68,9 @@ export async function fetchLeaderboard(showModal = false) {
 export function closeLeaderboard() {
     document.getElementById('leaderboard-modal').classList.remove('active');
 }
+
+// 暴露到全局，供概念填空等模塊使用
+window.incrementCorrect = incrementCorrect;
+window.incrementWrong = incrementWrong;
+window.fetchLeaderboard = fetchLeaderboard;
+window.recordCompletion = recordCompletion;

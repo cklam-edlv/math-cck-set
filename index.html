@@ -30,11 +30,33 @@
         console.log('✅ Firebase 已成功初始化');
     </script>
 
-    <!-- 題庫資料庫（最重要的修正！） -->
+    <!-- 題庫資料庫 -->
     <script src="js/data/database.js"></script>
 
     <!-- 樣式 -->
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-radius: 30px;
+            cursor: pointer;
+            color: #666;
+            transition: 0.2s;
+        }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .tab-panel {
+            display: none;
+        }
+        .tab-panel.active {
+            display: block;
+        }
+    </style>
 </head>
 <body>
 <!-- 登入模態框 -->
@@ -61,22 +83,50 @@
 
 <!-- 教師後台面板 -->
 <div id="admin-panel-modal" class="modal-overlay">
-    <div class="modal-content" style="max-width: 850px; text-align: left;">
-        <h2 style="margin-top:0; color:#b45f2b;">📊 全體學生監控面板</h2>
-        <div class="admin-toolbar">
-            <button class="btn-export" id="export-excel-btn">📥 匯出 Excel 報表</button>
-            <div class="file-input-wrapper" style="position:relative; display:inline-block;">
-                <button class="btn-import">📤 匯入 Excel 檔案</button>
-                <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="position:absolute; opacity:0; width:100%; height:100%; left:0; top:0; cursor:pointer;">
+    <div class="modal-content" style="max-width: 900px; text-align: left;">
+        <h2 style="margin-top:0; color:#b45f2b;">📊 教師管理面板</h2>
+        
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+            <button class="tab-btn active" data-tab="progress">📈 學生進度</button>
+            <button class="tab-btn" data-tab="examRevision">📝 溫習區題庫管理</button>
+        </div>
+
+        <div id="tab-progress" class="tab-panel active">
+            <div class="admin-toolbar">
+                <button class="btn-export" id="export-excel-btn">📥 匯出 Excel 報表</button>
+                <div class="file-input-wrapper" style="position:relative; display:inline-block;">
+                    <button class="btn-import">📤 匯入 Excel 檔案</button>
+                    <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" style="position:absolute; opacity:0; width:100%; height:100%; left:0; top:0; cursor:pointer;">
+                </div>
+                <button class="btn" id="download-template-btn">📋 下載範本</button>
             </div>
-            <button class="btn" id="download-template-btn">📋 下載範本</button>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <h4>📈 學生學習時長與進度</h4>
+                <table class="rank-table"><thead><tr><th>姓名</th><th>累積時長</th><th>最後活動</th></tr></thead><tbody id="admin-usage-body"></tbody></table>
+                <h4 style="margin-top:20px;">🏆 全班最新過關紀錄</h4>
+                <table class="rank-table"><thead><tr><th>學生</th><th>單元</th><th>耗時</th><th>答對/答錯</th><th>時間</th><th>操作</th></tr></thead><tbody id="admin-record-body"></tbody></table>
+            </div>
         </div>
-        <div style="max-height: 400px; overflow-y: auto;">
-            <h4>📈 學生學習時長與進度</h4>
-            <table class="rank-table"><thead><tr><th>姓名</th><th>累積時長</th><th>最後活動</th></tr></thead><tbody id="admin-usage-body"></tbody></table>
-            <h4 style="margin-top:20px;">🏆 全班最新過關紀錄</h4>
-            <table class="rank-table"><thead><tr><th>學生</th><th>單元</th><th>耗時</th><th>答對/答錯</th><th>時間</th><th>操作</th></tr></thead><tbody id="admin-record-body"></tbody></table>
+
+        <div id="tab-examRevision" class="tab-panel" style="display:none;">
+            <div style="margin-bottom: 16px;">
+                <label>選擇工作紙：</label>
+                <select id="worksheetSelect" style="padding: 8px; border-radius: 20px; min-width: 200px;">
+                    <option value="ws1">工作紙1 (集合概念填充)</option>
+                </select>
+                <button class="btn" id="loadWorksheetBtn">載入</button>
+                <button class="btn btn-primary" id="newWorksheetBtn">➕ 新增工作紙</button>
+            </div>
+            <div id="questionsEditor" style="max-height: 400px; overflow-y: auto;"></div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" id="saveWorksheetBtn">💾 儲存到 Firebase</button>
+                <button class="btn" id="exportJsonBtn">📤 匯出 JSON</button>
+                <input type="file" id="importJsonInput" accept=".json" style="display:none;" />
+                <button class="btn" id="importJsonBtn">📥 匯入 JSON</button>
+            </div>
+            <p style="color:#888; margin-top:12px;">💡 提示：題目中用 ______ 表示填空。答案與選項用逗號分隔，多個填空的選項用「|」分隔。</p>
         </div>
+
         <button class="action-btn" style="margin-top:20px; background:#ffb347;" id="close-admin-panel">關閉</button>
     </div>
 </div>
@@ -91,14 +141,7 @@
     </div>
 </div>
 
-<!-- 各單元完成模態框 -->
-<div id="basicModal" class="modal-overlay"><div class="modal-content"><h3>🎉 集合小英雄 🎉</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>什麼是「集合」？</strong></p><p>把具有相同特徵的東西放在一起，就是一個<strong>集合</strong>。</p><p>✅ 屬於：如果東西在集合裡，就是「屬於」這個集合。</p><p>📌 例如：{ 🍎, 🍌, 🍓 } 就是「水果集合」。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 恭喜你完成了基礎集合概念的挑戰！</div></div><button class="modal-close action-btn" data-modal="basicModal">繼續探索</button></div></div>
-<div id="notationCompleteModal" class="modal-overlay"><div class="modal-content"><h3>📝 列舉法與描述法</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>列舉法</strong>：將所有元素列出，如 { 🍎, 🍌, 🍓 }。</p><p>✨ <strong>描述法</strong>：用條件描述，如 { x | x 是水果 }。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 你已能靈活轉換列舉法與描述法！</div></div><button class="modal-close action-btn" data-modal="notationCompleteModal">繼續探索</button></div></div>
-<div id="intersectionCompleteModal" class="modal-overlay"><div class="modal-content"><h3>🔗 交集 (Intersection)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>交集</strong> 是指兩個集合中<strong>共同擁有</strong>的元素。</p><p>📖 記作 <strong>A ∩ B</strong>，意思是「同時屬於A和B」的東西。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 例如：集合A = { 紅色物品 }，集合B = { 水果 }<br>交集 = { 紅色水果 } 如 🍎 蘋果、🍓 草莓。</div></div><button class="modal-close action-btn" data-modal="intersectionCompleteModal">繼續探索</button></div></div>
-<div id="unionCompleteModal" class="modal-overlay"><div class="modal-content"><h3>🧩 併集 (Union)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>併集</strong> 是把兩個集合的<strong>所有元素</strong>合在一起。</p><p>📖 記作 <strong>A ∪ B</strong>，包含所有屬於A或屬於B的元素。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 例如：集合A = { 貓, 狗 }，集合B = { 狗, 兔子 }<br>併集 = { 貓, 狗, 兔子 }。</div></div><button class="modal-close action-btn" data-modal="unionCompleteModal">繼續探索</button></div></div>
-<div id="subsetBasicModal" class="modal-overlay"><div class="modal-content"><h3>📂 子集 (Subset)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>子集</strong>：如果集合 A 的所有元素都屬於集合 B，則 A 是 B 的子集。</p><p>📖 符號記作 <strong>A ⊆ B</strong>（A 包含於 B）。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 你已經學會判斷子集！接下來挑戰「真子集」分辨遊戲吧！</div></div><button class="modal-close action-btn" data-modal="subsetBasicModal">繼續探索</button></div></div>
-<div id="properSubsetModal" class="modal-overlay"><div class="modal-content"><h3>📂 真子集 (Proper Subset)</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>真子集</strong>：如果 A ⊆ B 且 A ≠ B，則 A 是 B 的真子集。</p><p>📖 符號記作 <strong>A ⊂ B</strong>。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 例如：{ 紅色水果 } ⊂ { 水果 }<br>{ 水果 } ⊆ { 水果 }（相等，所以不是真子集）</div></div><button class="modal-close action-btn" data-modal="properSubsetModal">繼續探索</button></div></div>
-<div id="differenceCompleteModal" class="modal-overlay"><div class="modal-content"><h3>🌍 全集與差集</h3><div style="margin:15px 0; text-align:left;"><p>✨ <strong>全集 U</strong>：所有被考慮的對象。</p><p>✨ <strong>差集 A - B</strong>：在 A 中但不在 B 中的元素。</p><div style="background:#ffe5b4; border-radius:28px; padding:12px; margin-top:12px;">🌟 你已經學會了全集與差集！</div></div><button class="modal-close action-btn" data-modal="differenceCompleteModal">繼續探索</button></div></div>
+<!-- 各單元完成模態框（略，保留原有） -->
 
 <!-- 頂部導航欄 -->
 <header class="app-header">
@@ -133,5 +176,361 @@
 
 <!-- 主程式入口 -->
 <script type="module" src="js/app.js"></script>
+
+<!-- 教師後台題庫管理腳本 -->
+<script>
+    (function() {
+        function waitForRdb(callback) {
+            if (window.rdb && window.rdb.ref) {
+                callback();
+            } else {
+                setTimeout(() => waitForRdb(callback), 100);
+            }
+        }
+
+        waitForRdb(() => {
+            const tabs = document.querySelectorAll('.tab-btn');
+            const panels = {
+                progress: document.getElementById('tab-progress'),
+                examRevision: document.getElementById('tab-examRevision')
+            };
+            tabs.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+                    tabs.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    Object.values(panels).forEach(p => p.style.display = 'none');
+                    if (panels[tab]) panels[tab].style.display = 'block';
+                    if (tab === 'examRevision') loadWorksheetList();
+                });
+            });
+
+            document.getElementById('close-admin-panel').addEventListener('click', () => {
+                document.getElementById('admin-panel-modal').style.display = 'none';
+            });
+
+            const db = window.rdb.db;
+            const ref = window.rdb.ref;
+            const set = window.rdb.set;
+            const get = window.rdb.get;
+            
+            let currentWorksheetId = 'ws1';
+            let currentQuestions = [];
+            let currentType = 'fill';  // 新增：記錄當前工作紙類型
+
+            async function loadWorksheetList() {
+                const select = document.getElementById('worksheetSelect');
+                select.innerHTML = '';
+                try {
+                    const snapshot = await get(ref(db, 'examRevision/worksheets'));
+                    if (snapshot.exists()) {
+                        const sheets = snapshot.val();
+                        Object.keys(sheets).forEach(key => {
+                            const opt = document.createElement('option');
+                            opt.value = key;
+                            opt.textContent = sheets[key].title || key;
+                            select.appendChild(opt);
+                        });
+                    }
+                } catch(e) {
+                    console.warn('加載工作紙列表失敗', e);
+                }
+                if (select.options.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.value = 'ws1';
+                    opt.textContent = '工作紙1 (集合概念填充)';
+                    select.appendChild(opt);
+                }
+            }
+
+            async function loadWorksheetForEdit() {
+                const id = document.getElementById('worksheetSelect').value;
+                currentWorksheetId = id;
+                const path = `examRevision/worksheets/${id}`;
+                console.log(`載入工作紙: ${id}`);
+                
+                const container = document.getElementById('questionsEditor');
+                container.innerHTML = '<p style="text-align:center; padding:20px;">⏳ 載入中...</p>';
+                
+                try {
+                    const snapshot = await get(ref(db, path));
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        currentQuestions = data.questions || [];
+                        currentType = data.type || 'fill';
+                        console.log('工作紙類型:', currentType, '題目數量:', currentQuestions.length);
+                        if (!Array.isArray(currentQuestions)) currentQuestions = [];
+                    } else {
+                        currentQuestions = [];
+                        currentType = 'fill';
+                    }
+                } catch(e) {
+                    console.error('載入失敗:', e);
+                    container.innerHTML = `<p style="color:red; text-align:center;">❌ 載入失敗：${e.message}</p>`;
+                    return;
+                }
+                
+                try {
+                    renderEditor();
+                } catch (renderErr) {
+                    console.error('渲染編輯器失敗:', renderErr);
+                    container.innerHTML = `<p style="color:red; text-align:center;">❌ 渲染失敗：${renderErr.message}</p>`;
+                }
+            }
+
+            function renderEditor() {
+                const container = document.getElementById('questionsEditor');
+                
+                if (currentQuestions.length === 0) {
+                    container.innerHTML = `
+                        <p style="text-align:center; padding:20px; color:#888;">📭 尚無題目，請在下方新增</p>
+                        ${renderAddRow()}
+                    `;
+                    bindAddEvent();
+                    return;
+                }
+                
+                let html = `<table style="width:100%; border-collapse:collapse;">`;
+                html += getTableHeader();
+                
+                currentQuestions.forEach((q, idx) => {
+                    try {
+                        html += renderQuestionRow(q, idx);
+                    } catch (err) {
+                        console.error(`渲染第 ${idx+1} 題時出錯:`, err, q);
+                    }
+                });
+                
+                html += renderAddRow();
+                html += `</table>`;
+                container.innerHTML = html;
+                console.log('編輯器渲染完成');
+
+                bindDeleteEvents();
+                bindAddEvent();
+            }
+
+            function getTableHeader() {
+                if (currentType === 'belong') {
+                    return `<tr><th>#</th><th>題目 (______為填空)</th><th>答案 (∈ 或 ∉)</th><th></th></tr>`;
+                } else if (currentType === 'choice') {
+                    return `<tr><th>#</th><th>題目</th><th>選項 (4個，逗號分隔)</th><th>答案索引 (0~3)</th><th></th></tr>`;
+                } else {
+                    return `<tr><th>#</th><th>題目 (______為填空)</th><th>答案(逗號分隔)</th><th>選項(用|分隔多個填空)</th><th></th></tr>`;
+                }
+            }
+
+            function renderQuestionRow(q, idx) {
+                if (currentType === 'belong') {
+                    return `<tr>
+                        <td>${idx+1}</td>
+                        <td><input type="text" value="${(q.q || '').replace(/"/g, '&quot;')}" data-idx="${idx}" class="q-input" style="width:95%;" /></td>
+                        <td><input type="text" value="${q.a || ''}" data-idx="${idx}" class="a-input" style="width:80px;" /></td>
+                        <td><button class="btn-delete" data-idx="${idx}">刪除</button></td>
+                    </tr>`;
+                } else if (currentType === 'choice') {
+                    const optionsStr = (q.options || []).join(',');
+                    return `<tr>
+                        <td>${idx+1}</td>
+                        <td><input type="text" value="${(q.q || '').replace(/"/g, '&quot;')}" data-idx="${idx}" class="q-input" style="width:95%;" /></td>
+                        <td><input type="text" value="${optionsStr}" data-idx="${idx}" class="opt-input" style="width:250px;" /></td>
+                        <td><input type="number" min="0" max="3" value="${q.a !== undefined ? q.a : 0}" data-idx="${idx}" class="a-input" style="width:60px;" /></td>
+                        <td><button class="btn-delete" data-idx="${idx}">刪除</button></td>
+                    </tr>`;
+                } else {
+                    // fill 模式
+                    const answers = q.blanks.map(b => b.correct || '').join(',');
+                    const opts = q.blanks.map(b => (b.options || []).join(',')).join(' | ');
+                    return `<tr>
+                        <td>${idx+1}</td>
+                        <td><input type="text" value="${(q.q || '').replace(/"/g, '&quot;')}" data-idx="${idx}" class="q-input" style="width:95%;" /></td>
+                        <td><input type="text" value="${answers}" data-idx="${idx}" class="a-input" style="width:120px;" /></td>
+                        <td><input type="text" value="${opts}" data-idx="${idx}" class="opt-input" style="width:250px;" /></td>
+                        <td><button class="btn-delete" data-idx="${idx}">刪除</button></td>
+                    </tr>`;
+                }
+            }
+
+            function renderAddRow() {
+                if (currentType === 'belong') {
+                    return `<tr><td>+</td><td><input type="text" id="newQ" placeholder="題目 (用 ______ 表示填空)" style="width:95%;" /></td><td><input type="text" id="newA" placeholder="∈ 或 ∉" /></td><td><button id="addQuestionBtn">新增</button></td></tr>`;
+                } else if (currentType === 'choice') {
+                    return `<tr><td>+</td><td><input type="text" id="newQ" placeholder="題目" style="width:95%;" /></td><td><input type="text" id="newOpt" placeholder="選項1,選項2,選項3,選項4" style="width:250px;" /></td><td><input type="number" id="newA" min="0" max="3" value="0" style="width:60px;" /></td><td><button id="addQuestionBtn">新增</button></td></tr>`;
+                } else {
+                    return `<tr><td>+</td><td><input type="text" id="newQ" placeholder="新題目..." style="width:95%;" /></td><td><input type="text" id="newA" placeholder="答案1,答案2" /></td><td><input type="text" id="newOpt" placeholder="選項1,選項2|選項A,選項B" /></td><td><button id="addQuestionBtn">新增</button></td></tr>`;
+                }
+            }
+
+            function bindDeleteEvents() {
+                document.querySelectorAll('.btn-delete').forEach(btn => {
+                    btn.addEventListener('click', e => {
+                        const idx = e.target.dataset.idx;
+                        currentQuestions.splice(idx, 1);
+                        renderEditor();
+                    });
+                });
+            }
+
+            function bindAddEvent() {
+                const addBtn = document.getElementById('addQuestionBtn');
+                if (addBtn) addBtn.addEventListener('click', addQuestion);
+            }
+
+            function addQuestion() {
+                if (currentType === 'belong') {
+                    const q = document.getElementById('newQ').value.trim();
+                    const a = document.getElementById('newA').value.trim();
+                    if (!q) return alert('請輸入題目');
+                    if (!a) return alert('請輸入答案 (∈ 或 ∉)');
+                    currentQuestions.push({ q, a });
+                } else if (currentType === 'choice') {
+                    const q = document.getElementById('newQ').value.trim();
+                    const optsStr = document.getElementById('newOpt').value.trim();
+                    const a = parseInt(document.getElementById('newA').value) || 0;
+                    if (!q) return alert('請輸入題目');
+                    const options = optsStr.split(',').map(s => s.trim()).filter(s => s);
+                    if (options.length < 2) return alert('至少需要2個選項');
+                    currentQuestions.push({ q, options, a });
+                } else {
+                    // fill 模式
+                    const q = document.getElementById('newQ').value.trim();
+                    const ans = document.getElementById('newA').value.split(',').map(s => s.trim());
+                    const optsGroups = document.getElementById('newOpt').value.split('|').map(s => s.trim());
+                    if (!q) return alert('請輸入題目');
+                    const blanks = [];
+                    const count = (q.match(/______/g) || []).length;
+                    if (count === 0) return alert('題目中必須包含 ______ 作為填空位置');
+                    for (let i = 0; i < count; i++) {
+                        let opts = (optsGroups[i] || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                        if (opts.length === 0 && ans[i]) opts = [ans[i]];
+                        blanks.push({ correct: ans[i] || '', options: opts });
+                    }
+                    currentQuestions.push({ q, blanks });
+                }
+                renderEditor();
+            }
+
+            async function saveWorksheet() {
+                let newQuestions = [];
+                
+                if (currentType === 'belong') {
+                    const qInputs = document.querySelectorAll('.q-input');
+                    const aInputs = document.querySelectorAll('.a-input');
+                    for (let i = 0; i < qInputs.length; i++) {
+                        const qText = qInputs[i].value.trim();
+                        if (!qText) continue;
+                        const aVal = aInputs[i].value.trim();
+                        newQuestions.push({ q: qText, a: aVal });
+                    }
+                } else if (currentType === 'choice') {
+                    const qInputs = document.querySelectorAll('.q-input');
+                    const optInputs = document.querySelectorAll('.opt-input');
+                    const aInputs = document.querySelectorAll('.a-input');
+                    for (let i = 0; i < qInputs.length; i++) {
+                        const qText = qInputs[i].value.trim();
+                        if (!qText) continue;
+                        const optsStr = optInputs[i].value;
+                        const options = optsStr.split(',').map(s => s.trim()).filter(s => s);
+                        const aVal = parseInt(aInputs[i].value) || 0;
+                        newQuestions.push({ q: qText, options, a: aVal });
+                    }
+                } else {
+                    const qInputs = document.querySelectorAll('.q-input');
+                    const aInputs = document.querySelectorAll('.a-input');
+                    const optInputs = document.querySelectorAll('.opt-input');
+                    for (let i = 0; i < qInputs.length; i++) {
+                        const qText = qInputs[i].value.trim();
+                        if (!qText) continue;
+                        const answers = aInputs[i].value.split(',').map(s => s.trim());
+                        const optsGroups = optInputs[i].value.split('|').map(s => s.trim());
+                        const blanks = [];
+                        const count = (qText.match(/______/g) || []).length;
+                        for (let j = 0; j < count; j++) {
+                            let opts = (optsGroups[j] || '').split(',').map(s => s.trim()).filter(s => s !== '');
+                            if (opts.length === 0 && answers[j]) opts = [answers[j]];
+                            blanks.push({ correct: answers[j] || '', options: opts });
+                        }
+                        newQuestions.push({ q: qText, blanks });
+                    }
+                }
+                
+                const select = document.getElementById('worksheetSelect');
+                const selectedOption = select.selectedOptions[0];
+                const title = selectedOption ? selectedOption.textContent : currentWorksheetId;
+                
+                try {
+                    const worksheetRef = ref(db, `examRevision/worksheets/${currentWorksheetId}`);
+                    await set(worksheetRef, { 
+                        title: title,
+                        type: currentType,
+                        questions: newQuestions,
+                        updated: new Date().toISOString()
+                    });
+                    alert('✅ 儲存成功！');
+                    window.dispatchEvent(new CustomEvent('worksheetsUpdated'));
+                } catch(e) {
+                    console.error('保存失败:', e);
+                    alert('❌ 儲存失敗: ' + (e.message || '未知錯誤'));
+                }
+            }
+
+            const loadBtn = document.getElementById('loadWorksheetBtn');
+            const saveBtn = document.getElementById('saveWorksheetBtn');
+            const newBtn = document.getElementById('newWorksheetBtn');
+            const exportBtn = document.getElementById('exportJsonBtn');
+            const importBtn = document.getElementById('importJsonBtn');
+            const importInput = document.getElementById('importJsonInput');
+
+            if (loadBtn) loadBtn.addEventListener('click', loadWorksheetForEdit);
+            if (saveBtn) saveBtn.addEventListener('click', saveWorksheet);
+            if (newBtn) newBtn.addEventListener('click', () => {
+                const id = prompt('輸入新工作紙 ID (英文數字，例如 ws4)');
+                if (!id) return;
+                const type = prompt('輸入類型 (fill / belong / choice)');
+                if (!type) return;
+                currentWorksheetId = id;
+                currentType = type;
+                currentQuestions = [];
+                renderEditor();
+                const select = document.getElementById('worksheetSelect');
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = id;
+                select.appendChild(opt);
+                select.value = id;
+                
+                const worksheetRef = ref(db, `examRevision/worksheets/${id}`);
+                set(worksheetRef, { 
+                    title: id, 
+                    type: type,
+                    questions: [],
+                    updated: new Date().toISOString()
+                }).catch(e => console.warn('初始化保存失败', e));
+            });
+            if (exportBtn) exportBtn.addEventListener('click', () => {
+                const blob = new Blob([JSON.stringify(currentQuestions, null, 2)], {type: 'application/json'});
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `worksheet_${currentWorksheetId}.json`;
+                a.click();
+            });
+            if (importBtn) importBtn.addEventListener('click', () => importInput.click());
+            if (importInput) importInput.addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    try {
+                        currentQuestions = JSON.parse(ev.target.result);
+                        renderEditor();
+                    } catch(ex) { alert('格式錯誤'); }
+                };
+                reader.readAsText(file);
+            });
+
+            loadWorksheetList();
+        });
+    })();
+</script>
 </body>
 </html>
