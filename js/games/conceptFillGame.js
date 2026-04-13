@@ -452,7 +452,7 @@ function resetChoiceGame() {
     startTimer();
 }
 
-// ========== Venn 模式（新增） ==========
+// ========== Venn 模式 ==========
 function renderVennUI() {
     stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
@@ -534,6 +534,7 @@ function drawVennCanvas(canvas, S, A, B, inter) {
     ctx.fillStyle = 'rgba(59,130,246,0.25)';
     ctx.fill();
     ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
     
     ctx.font = 'bold 11px sans-serif';
@@ -588,10 +589,16 @@ function renderVennQuestion(index) {
     document.getElementById('feedbackArea').className = 'feedback-area';
     document.getElementById('nextBtn').disabled = true;
     gameCompleted = false;
+    
+    document.querySelectorAll('.venn-option-card').forEach(c => {
+        c.classList.remove('venn-correct', 'venn-wrong');
+        c.style.pointerEvents = 'auto';
+    });
 }
 
 function bindVennEvents() {
-    document.getElementById('vennOptions').addEventListener('click', (e) => {
+    const optionsContainer = document.getElementById('vennOptions');
+    optionsContainer.addEventListener('click', (e) => {
         const card = e.target.closest('.venn-option-card');
         if (!card || gameCompleted) return;
         const idx = parseInt(card.dataset.optIndex);
@@ -655,13 +662,31 @@ function addVennStyles() {
     style.id = 'vennStyles';
     style.textContent = `
         .venn-game-container { max-width: 900px; margin: 0 auto; }
-        .venn-options-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 20px 0; }
-        .venn-option-card { background: #f1f5f9; border-radius: 20px; padding: 16px; cursor: pointer; border: 3px solid transparent; transition: 0.2s; text-align: center; }
-        .venn-option-card:hover { background: #e2e8f0; }
+        .venn-options-grid { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 16px; 
+            margin: 20px 0; 
+        }
+        .venn-option-card { 
+            background: #f1f5f9; 
+            border-radius: 20px; 
+            padding: 16px; 
+            cursor: pointer; 
+            border: 3px solid transparent; 
+            transition: 0.2s; 
+            text-align: center; 
+        }
+        .venn-option-card:hover { background: #e2e8f0; transform: scale(1.01); }
         .venn-option-card.venn-correct { border-color: #22c55e; background: #dcfce7; }
         .venn-option-card.venn-wrong { border-color: #ef4444; background: #fee2e2; }
-        .venn-option-label { font-weight: 700; margin-bottom: 8px; }
+        .venn-option-label { font-weight: 700; margin-bottom: 8px; font-size: 1.2rem; }
         .venn-canvas { max-width: 100%; height: auto; background: white; border-radius: 12px; }
+        .feedback-area { min-height: 60px; padding: 15px; border-radius: 20px; font-size: 1.5rem; margin-top: 20px; }
+        .feedback-area.correct { background: #dcfce7; color: #166534; }
+        .feedback-area.wrong { background: #fee2e2; color: #991b1b; }
+        .final-score { font-size: 4rem; font-weight: 700; display: block; }
+        .worksheet-selector { margin-bottom: 20px; }
     `;
     document.head.appendChild(style);
 }
