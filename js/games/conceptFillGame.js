@@ -1,9 +1,10 @@
 /**
- * 溫習區遊戲模塊（多模式支持）
+ * 溫習區遊戲模塊（多模式支持 + 防作弊鎖定）
  * - fill: 填空下拉
  * - belong: 雙按鈕屬於/不屬於
- * - choice: 四選一選擇題
+ * - choice: 四選一選擇題（選項隨機打亂）
  * - venn: 溫氏圖選擇題（選項隨機打亂）
+ * - 防作弊：切換應用超過5秒鎖定，需解鎖混合運算驗證碼
  */
 
 const db = window.rdb?.db;
@@ -23,14 +24,161 @@ let timerSeconds = 0;
 let gameCompleted = false;
 let currentWorksheetId = 'ws1';
 let worksheetList = [];
-
 let allSelects = [];
+
+// 防作弊相關
+let lockTimer = null;
+let isLocked = false;
+let suspiciousFlag = false;
+let visibilityListenerActive = false;
 
 const incrementCorrect = window.incrementCorrect || (() => {});
 const incrementWrong = window.incrementWrong || (() => {});
 const fetchLeaderboard = window.fetchLeaderboard || (() => {});
 const recordCompletion = window.recordCompletion || (() => {});
 
+// ---------- 防作弊邏輯 ----------
+function handleVisibilityChange() {
+    if (document.hidden) {
+        console.log('[防作弊] 頁面隱藏，啟動5秒計時器');
+        if (lockTimer) clearTimeout(lockTimer);
+        lockTimer = setTimeout(() => {
+            if (!gameCompleted && !isLocked) {
+                console.log('[防作弊] 5秒到，鎖定遊戲');
+                lockGame();
+            }
+        }, 5000);
+    } else {
+        console.log('[防作弊] 頁面可見，清除計時器');
+        if (lockTimer) {
+            clearTimeout(lockTimer);
+            lockTimer = null;
+        }
+    }
+}
+
+function lockGame() {
+    isLocked = true;
+    stopTimer();
+    suspiciousFlag = true;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cheatLockOverlay';
+    overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:flex; justify-content:center; align-items:center;';
+    
+    const question = generateMathCaptcha();
+    
+    overlay.innerHTML = `
+        <div style="background:white; padding:40px; border-radius:32px; text-align:center; max-width:400px; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+            <h2 style="color:#1e293b;">🔒 練習已暫停</h2>
+            <p style="margin:20px 0; color:#475569;">檢測到您切換了應用程式。<br>請計算以下數學題以繼續練習。</p>
+            <div style="font-size:2.5rem; margin:20px 0; font-weight:700; color:#0f172a;" id="captchaQuestion">${question.text}</div>
+            <input type="number" id="captchaInput" placeholder="輸入答案" style="padding:12px; border-radius:30px; border:2px solid #cbd5e1; text-align:center; font-size:1.5rem; width:120px;">
+            <br>
+            <button id="unlockBtn" style="margin-top:20px; padding:14px 36px; border-radius:40px; background:#3b82f6; color:white; border:none; font-size:1.2rem; cursor:pointer;">解鎖繼續</button>
+            <p style="margin-top:20px; color:#888; font-size:0.8rem;">此次切換已被記錄</p>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    const correctAnswer = question.answer;
+    
+    document.getElementById('unlockBtn').addEventListener('click', () => {
+        const input = document.getElementById('captchaInput').value;
+        if (parseInt(input) === correctAnswer) {
+            document.body.removeChild(overlay);
+            isLocked = false;
+            startTimer();
+            console.log('[防作弊] 解鎖成功');
+        } else {
+            alert(`❌ 答案錯誤，請重新計算`);
+        }
+    });
+}
+
+function generateMathCaptcha() {
+    const target = Math.floor(Math.random() * 30) + 1;
+    const expr = buildExpressionForAnswer(target);
+    return { text: expr.text, answer: expr.answer };
+}
+
+function buildExpressionForAnswer(target) {
+    const useMultiplyFirst = Math.random() < 0.5;
+    
+    if (useMultiplyFirst) {
+        const isMultiply = Math.random() < 0.5;
+        let a, b, c;
+        if (isMultiply) {
+            a = Math.floor(Math.random() * 8) + 2;
+            b = Math.floor(Math.random() * 8) + 2;
+            const product = a * b;
+            if (product <= target) {
+                c = target - product;
+                return { text: `${a} × ${b} + ${c} = ?`, answer: target };
+            } else {
+                c = product - target;
+                return { text: `${a} × ${b} - ${c} = ?`, answer: target };
+            }
+        } else {
+            b = Math.floor(Math.random() * 8) + 2;
+            const quotient = Math.floor(Math.random() * 8) + 2;
+            a = b * quotient;
+            const divResult = quotient;
+            if (divResult <= target) {
+                c = target - divResult;
+                return { text: `${a} ÷ ${b} + ${c} = ?`, answer: target };
+            } else {
+                c = divResult - target;
+                return { text: `${a} ÷ ${b} - ${c} = ?`, answer: target };
+            }
+        }
+    } else {
+        const isMultiply = Math.random() < 0.5;
+        let a, b, c;
+        if (isMultiply) {
+            b = Math.floor(Math.random() * 8) + 2;
+            c = Math.floor(Math.random() * 8) + 2;
+            const product = b * c;
+            if (product <= target) {
+                a = target - product;
+                return { text: `${a} + ${b} × ${c} = ?`, answer: target };
+            } else {
+                a = product - target;
+                return { text: `${b} × ${c} - ${a} = ?`, answer: target };
+            }
+        } else {
+            c = Math.floor(Math.random() * 8) + 2;
+            const quotient = Math.floor(Math.random() * 8) + 2;
+            b = c * quotient;
+            const divResult = quotient;
+            if (divResult <= target) {
+                a = target - divResult;
+                return { text: `${a} + ${b} ÷ ${c} = ?`, answer: target };
+            } else {
+                a = divResult - target;
+                return { text: `${b} ÷ ${c} - ${a} = ?`, answer: target };
+            }
+        }
+    }
+}
+
+function bindVisibilityListener() {
+    if (!visibilityListenerActive) {
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        visibilityListenerActive = true;
+        console.log('[防作弊] 監聽已綁定');
+    }
+}
+
+function unbindVisibilityListener() {
+    if (visibilityListenerActive) {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        visibilityListenerActive = false;
+        console.log('[防作弊] 監聽已移除');
+    }
+}
+
+// ========== 通用初始化 ==========
 export async function init(options = {}) {
     const { worksheetId = 'ws1', container } = options;
     if (!container) return;
@@ -65,6 +213,9 @@ export async function init(options = {}) {
         renderFillUI();
     }
     startTimer();
+    
+    // 綁定防作弊監聽
+    bindVisibilityListener();
 
     window.addEventListener('worksheetsUpdated', async () => {
         if (currentContainer) {
@@ -146,7 +297,7 @@ function updateTimerDisplay() {
     timerEl.textContent = `${mins}:${secs}`;
 }
 
-// ========== 填空模式 ==========
+// ========== 填空模式 (fill) ==========
 function renderFillUI() {
     stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
@@ -341,6 +492,7 @@ function finishBelongGame() {
     document.getElementById('playAgainBtn').addEventListener('click', resetBelongGame);
     if (recordCompletion) recordCompletion(timerSeconds*1000, correctCount, wrongCount);
     fetchLeaderboard();
+    unbindVisibilityListener();
 }
 
 function resetBelongGame() {
@@ -348,6 +500,7 @@ function resetBelongGame() {
     selectRandomQuestions(8);
     renderBelongUI();
     startTimer();
+    bindVisibilityListener();
 }
 
 // ========== Choice 模式 ==========
@@ -384,7 +537,17 @@ function renderChoiceQuestion(index) {
     document.getElementById('questionText').textContent = q.q;
     document.getElementById('progressText').textContent = `第 ${index+1} / ${selectedQuestions.length} 題`;
     const optionsGroup = document.getElementById('optionsGroup');
-    optionsGroup.innerHTML = q.options.map((opt, i) => 
+    
+    // 打亂選項順序
+    const originalOptions = q.options;
+    const originalCorrect = q.a;
+    const shuffledIndices = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+    const shuffledOptions = shuffledIndices.map(i => originalOptions[i]);
+    const newCorrectIndex = shuffledIndices.indexOf(originalCorrect);
+    q.shuffledOptions = shuffledOptions;
+    q.shuffledCorrect = newCorrectIndex;
+    
+    optionsGroup.innerHTML = shuffledOptions.map((opt, i) => 
         `<button class="choice-option" data-opt-index="${i}">${String.fromCharCode(65+i)}. ${opt}</button>`
     ).join('');
     document.getElementById('feedbackArea').innerHTML = '';
@@ -407,7 +570,7 @@ function bindChoiceEvents() {
 function handleChoiceAnswer(selectedIdx) {
     if (gameCompleted) return;
     const q = selectedQuestions[currentIndex];
-    const isCorrect = (selectedIdx === q.a);
+    const isCorrect = (selectedIdx === q.shuffledCorrect);
     const btns = document.querySelectorAll('.choice-option');
     btns.forEach(btn => btn.disabled = true);
     const fb = document.getElementById('feedbackArea');
@@ -417,10 +580,10 @@ function handleChoiceAnswer(selectedIdx) {
         btns[selectedIdx].classList.add('correct');
     } else {
         wrongCount++; incrementWrong();
-        fb.innerHTML = `❌ 答錯了，正確答案是 ${String.fromCharCode(65+q.a)}. ${q.options[q.a]}`;
+        fb.innerHTML = `❌ 答錯了，正確答案是 ${String.fromCharCode(65+q.shuffledCorrect)}. ${q.shuffledOptions[q.shuffledCorrect]}`;
         fb.className = 'feedback-area wrong';
         btns[selectedIdx].classList.add('wrong');
-        btns[q.a].classList.add('correct');
+        btns[q.shuffledCorrect].classList.add('correct');
     }
     document.getElementById('nextBtn').disabled = false;
     gameCompleted = true;
@@ -443,6 +606,7 @@ function finishChoiceGame() {
     document.getElementById('playAgainBtn').addEventListener('click', resetChoiceGame);
     if (recordCompletion) recordCompletion(timerSeconds*1000, correctCount, wrongCount);
     fetchLeaderboard();
+    unbindVisibilityListener();
 }
 
 function resetChoiceGame() {
@@ -450,9 +614,10 @@ function resetChoiceGame() {
     selectRandomQuestions(8);
     renderChoiceUI();
     startTimer();
+    bindVisibilityListener();
 }
 
-// ========== Venn 模式（選項隨機打亂） ==========
+// ========== Venn 模式 ==========
 function renderVennUI() {
     stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
@@ -575,13 +740,11 @@ function renderVennQuestion(index) {
     document.getElementById('progressText').textContent = `第 ${index+1} / ${selectedQuestions.length} 題`;
     const container = document.getElementById('vennOptions');
     
-    // 🆕 打亂選項順序
     const originalOptions = q.options;
     const originalCorrect = q.a;
     const shuffledIndices = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
     const shuffledOptions = shuffledIndices.map(i => originalOptions[i]);
     const newCorrectIndex = shuffledIndices.indexOf(originalCorrect);
-    
     q.shuffledOptions = shuffledOptions;
     q.shuffledCorrect = newCorrectIndex;
     
@@ -611,8 +774,7 @@ function renderVennQuestion(index) {
 }
 
 function bindVennEvents() {
-    const optionsContainer = document.getElementById('vennOptions');
-    optionsContainer.addEventListener('click', (e) => {
+    document.getElementById('vennOptions').addEventListener('click', (e) => {
         const card = e.target.closest('.venn-option-card');
         if (!card || gameCompleted) return;
         const idx = parseInt(card.dataset.optIndex);
@@ -661,6 +823,7 @@ function finishVennGame() {
     document.getElementById('playAgainBtn').addEventListener('click', resetVennGame);
     if (recordCompletion) recordCompletion(timerSeconds*1000, correctCount, wrongCount);
     fetchLeaderboard();
+    unbindVisibilityListener();
 }
 
 function resetVennGame() {
@@ -668,41 +831,7 @@ function resetVennGame() {
     selectRandomQuestions(8);
     renderVennUI();
     startTimer();
-}
-
-function addVennStyles() {
-    if (document.getElementById('vennStyles')) return;
-    const style = document.createElement('style');
-    style.id = 'vennStyles';
-    style.textContent = `
-        .venn-game-container { max-width: 900px; margin: 0 auto; }
-        .venn-options-grid { 
-            display: grid; 
-            grid-template-columns: repeat(2, 1fr); 
-            gap: 16px; 
-            margin: 20px 0; 
-        }
-        .venn-option-card { 
-            background: #f1f5f9; 
-            border-radius: 20px; 
-            padding: 16px; 
-            cursor: pointer; 
-            border: 3px solid transparent; 
-            transition: 0.2s; 
-            text-align: center; 
-        }
-        .venn-option-card:hover { background: #e2e8f0; transform: scale(1.01); }
-        .venn-option-card.venn-correct { border-color: #22c55e; background: #dcfce7; }
-        .venn-option-card.venn-wrong { border-color: #ef4444; background: #fee2e2; }
-        .venn-option-label { font-weight: 700; margin-bottom: 8px; font-size: 1.2rem; }
-        .venn-canvas { max-width: 100%; height: auto; background: white; border-radius: 12px; }
-        .feedback-area { min-height: 60px; padding: 15px; border-radius: 20px; font-size: 1.5rem; margin-top: 20px; }
-        .feedback-area.correct { background: #dcfce7; color: #166534; }
-        .feedback-area.wrong { background: #fee2e2; color: #991b1b; }
-        .final-score { font-size: 4rem; font-weight: 700; display: block; }
-        .worksheet-selector { margin-bottom: 20px; }
-    `;
-    document.head.appendChild(style);
+    bindVisibilityListener();
 }
 
 // ========== 通用 ==========
@@ -750,5 +879,40 @@ function addChoiceStyles() {
     const style = document.createElement('style');
     style.id = 'choiceStyles';
     style.textContent = `.choice-game-container{max-width:800px;margin:0 auto;}.options-group{display:flex;flex-direction:column;gap:12px;margin:20px 0;}.choice-option{padding:16px 20px;background:#f1f5f9;border:2px solid #e2e8f0;border-radius:16px;font-size:1.2rem;text-align:left;cursor:pointer;transition:0.2s;}.choice-option:hover{background:#e2e8f0;}.choice-option.correct{background:#dcfce7;border-color:#22c55e;color:#166534;}.choice-option.wrong{background:#fee2e2;border-color:#ef4444;color:#991b1b;}.choice-option:disabled{cursor:not-allowed;opacity:0.7;}.feedback-area{min-height:60px;padding:15px;border-radius:20px;font-size:1.5rem;}.feedback-area.correct{background:#dcfce7;color:#166534;}.feedback-area.wrong{background:#fee2e2;color:#991b1b;}`;
+    document.head.appendChild(style);
+}
+
+function addVennStyles() {
+    if (document.getElementById('vennStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'vennStyles';
+    style.textContent = `
+        .venn-game-container { max-width: 900px; margin: 0 auto; }
+        .venn-options-grid { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 16px; 
+            margin: 20px 0; 
+        }
+        .venn-option-card { 
+            background: #f1f5f9; 
+            border-radius: 20px; 
+            padding: 16px; 
+            cursor: pointer; 
+            border: 3px solid transparent; 
+            transition: 0.2s; 
+            text-align: center; 
+        }
+        .venn-option-card:hover { background: #e2e8f0; transform: scale(1.01); }
+        .venn-option-card.venn-correct { border-color: #22c55e; background: #dcfce7; }
+        .venn-option-card.venn-wrong { border-color: #ef4444; background: #fee2e2; }
+        .venn-option-label { font-weight: 700; margin-bottom: 8px; font-size: 1.2rem; }
+        .venn-canvas { max-width: 100%; height: auto; background: white; border-radius: 12px; }
+        .feedback-area { min-height: 60px; padding: 15px; border-radius: 20px; font-size: 1.5rem; margin-top: 20px; }
+        .feedback-area.correct { background: #dcfce7; color: #166534; }
+        .feedback-area.wrong { background: #fee2e2; color: #991b1b; }
+        .final-score { font-size: 4rem; font-weight: 700; display: block; }
+        .worksheet-selector { margin-bottom: 20px; }
+    `;
     document.head.appendChild(style);
 }
