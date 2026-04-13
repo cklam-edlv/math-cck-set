@@ -510,6 +510,8 @@ function calculateVennLayout(A, B, width, height) {
 }
 
 function drawVennCanvas(canvas, S, A, B, inter) {
+    // 確保 inter 為數組
+    inter = inter || [];
     const ctx = canvas.getContext('2d');
     const width = canvas.width, height = canvas.height;
     ctx.clearRect(0, 0, width, height);
@@ -583,7 +585,8 @@ function renderVennQuestion(index) {
     container.innerHTML = html;
     q.options.forEach((opt, i) => {
         const canvas = document.getElementById(`vennCanvas-${i}`);
-        drawVennCanvas(canvas, q.S, opt.A, opt.B, opt.inter);
+        // 兼容可能缺失的 inter 字段
+        drawVennCanvas(canvas, q.S, opt.A, opt.B, opt.inter || []);
     });
     document.getElementById('feedbackArea').innerHTML = '';
     document.getElementById('feedbackArea').className = 'feedback-area';
