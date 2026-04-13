@@ -3,7 +3,7 @@
  * - fill: 填空下拉
  * - belong: 雙按鈕屬於/不屬於
  * - choice: 四選一選擇題
- * - venn: 溫氏圖選擇題（Canvas繪製）
+ * - venn: 溫氏圖選擇題（選項隨機打亂）
  */
 
 const db = window.rdb?.db;
@@ -452,7 +452,7 @@ function resetChoiceGame() {
     startTimer();
 }
 
-// ========== Venn 模式 ==========
+// ========== Venn 模式（選項隨機打亂） ==========
 function renderVennUI() {
     stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
@@ -510,7 +510,6 @@ function calculateVennLayout(A, B, width, height) {
 }
 
 function drawVennCanvas(canvas, S, A, B, inter) {
-    // 確保 inter 為數組
     inter = inter || [];
     const ctx = canvas.getContext('2d');
     const width = canvas.width, height = canvas.height;
@@ -575,19 +574,31 @@ function renderVennQuestion(index) {
     document.getElementById('questionText').textContent = q.q;
     document.getElementById('progressText').textContent = `第 ${index+1} / ${selectedQuestions.length} 題`;
     const container = document.getElementById('vennOptions');
+    
+    // 🆕 打亂選項順序
+    const originalOptions = q.options;
+    const originalCorrect = q.a;
+    const shuffledIndices = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+    const shuffledOptions = shuffledIndices.map(i => originalOptions[i]);
+    const newCorrectIndex = shuffledIndices.indexOf(originalCorrect);
+    
+    q.shuffledOptions = shuffledOptions;
+    q.shuffledCorrect = newCorrectIndex;
+    
     let html = '';
-    q.options.forEach((opt, i) => {
+    shuffledOptions.forEach((opt, i) => {
         html += `<div class="venn-option-card" data-opt-index="${i}">
             <div class="venn-option-label">${String.fromCharCode(65+i)}</div>
             <canvas width="280" height="180" class="venn-canvas" id="vennCanvas-${i}"></canvas>
         </div>`;
     });
     container.innerHTML = html;
-    q.options.forEach((opt, i) => {
+    
+    shuffledOptions.forEach((opt, i) => {
         const canvas = document.getElementById(`vennCanvas-${i}`);
-        // 兼容可能缺失的 inter 字段
         drawVennCanvas(canvas, q.S, opt.A, opt.B, opt.inter || []);
     });
+    
     document.getElementById('feedbackArea').innerHTML = '';
     document.getElementById('feedbackArea').className = 'feedback-area';
     document.getElementById('nextBtn').disabled = true;
@@ -614,7 +625,7 @@ function bindVennEvents() {
 function handleVennAnswer(selectedIdx) {
     if (gameCompleted) return;
     const q = selectedQuestions[currentIndex];
-    const isCorrect = (selectedIdx === q.a);
+    const isCorrect = (selectedIdx === q.shuffledCorrect);
     const cards = document.querySelectorAll('.venn-option-card');
     cards.forEach(c => c.style.pointerEvents = 'none');
     const fb = document.getElementById('feedbackArea');
@@ -624,10 +635,10 @@ function handleVennAnswer(selectedIdx) {
         cards[selectedIdx].classList.add('venn-correct');
     } else {
         wrongCount++; incrementWrong();
-        fb.innerHTML = `❌ 答錯了，正確答案是 ${String.fromCharCode(65+q.a)}。`;
+        fb.innerHTML = `❌ 答錯了，正確答案是 ${String.fromCharCode(65 + q.shuffledCorrect)}。`;
         fb.className = 'feedback-area wrong';
         cards[selectedIdx].classList.add('venn-wrong');
-        cards[q.a].classList.add('venn-correct');
+        cards[q.shuffledCorrect].classList.add('venn-correct');
     }
     document.getElementById('nextBtn').disabled = false;
     gameCompleted = true;
