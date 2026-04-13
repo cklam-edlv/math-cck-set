@@ -3,6 +3,7 @@
  * - fill: 填空下拉（ws1）
  * - belong: 雙按鈕屬於/不屬於（ws2）
  * - choice: 四選一選擇題（ws3）
+ * 修正：手機切換工作紙後事件綁定問題
  */
 
 const db = window.rdb?.db;
@@ -119,7 +120,7 @@ function selectRandomQuestions(count) {
 }
 
 function startTimer() {
-    if (timerInterval) clearInterval(timerInterval);
+    stopTimer(); // 确保清除旧计时器
     timerSeconds = 0;
     timerInterval = setInterval(() => {
         timerSeconds++;
@@ -144,6 +145,7 @@ function updateTimerDisplay() {
 
 // ========== 填空模式 ==========
 function renderFillUI() {
+    stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
         `<option value="${ws.id}" ${ws.id === currentWorksheetId ? 'selected' : ''}>${ws.title}</option>`
     ).join('');
@@ -172,6 +174,7 @@ function renderFillUI() {
     document.getElementById('submitAllBtn').addEventListener('click', submitAll);
     document.getElementById('worksheetSelector').addEventListener('change', onWorksheetChange);
     addFillStyles();
+    startTimer();
 }
 
 function renderQuestionsList() {
@@ -254,6 +257,7 @@ function submitAll() {
 
 // ========== Belong 模式 ==========
 function renderBelongUI() {
+    stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
         `<option value="${ws.id}" ${ws.id === currentWorksheetId ? 'selected' : ''}>${ws.title}</option>`
     ).join('');
@@ -279,6 +283,7 @@ function renderBelongUI() {
     renderBelongQuestion(0);
     bindBelongEvents();
     addBelongStyles();
+    startTimer();
 }
 
 function renderBelongQuestion(index) {
@@ -293,11 +298,16 @@ function renderBelongQuestion(index) {
 }
 
 function bindBelongEvents() {
-    document.getElementById('belongBtn').addEventListener('click', () => handleBelongAnswer('∈'));
-    document.getElementById('notBelongBtn').addEventListener('click', () => handleBelongAnswer('∉'));
-    document.getElementById('nextBtn').addEventListener('click', goToNextBelongQuestion);
-    document.getElementById('worksheetSelector').addEventListener('change', onWorksheetChange);
-    document.getElementById('playAgainBtn')?.addEventListener('click', resetBelongGame);
+    const belongBtn = document.getElementById('belongBtn');
+    const notBelongBtn = document.getElementById('notBelongBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const selector = document.getElementById('worksheetSelector');
+    
+    // 移除旧监听器（通过替换DOM已自动清除，这里直接绑定新监听器）
+    belongBtn.addEventListener('click', () => handleBelongAnswer('∈'));
+    notBelongBtn.addEventListener('click', () => handleBelongAnswer('∉'));
+    nextBtn.addEventListener('click', goToNextBelongQuestion);
+    selector.addEventListener('change', onWorksheetChange);
 }
 
 function handleBelongAnswer(selected) {
@@ -343,8 +353,9 @@ function resetBelongGame() {
     startTimer();
 }
 
-// ========== Choice 模式（新增） ==========
+// ========== Choice 模式 ==========
 function renderChoiceUI() {
+    stopTimer();
     const worksheetOptions = worksheetList.map(ws => 
         `<option value="${ws.id}" ${ws.id === currentWorksheetId ? 'selected' : ''}>${ws.title}</option>`
     ).join('');
@@ -367,6 +378,7 @@ function renderChoiceUI() {
     renderChoiceQuestion(0);
     bindChoiceEvents();
     addChoiceStyles();
+    startTimer();
 }
 
 function renderChoiceQuestion(index) {
@@ -385,14 +397,18 @@ function renderChoiceQuestion(index) {
 }
 
 function bindChoiceEvents() {
-    document.getElementById('optionsGroup').addEventListener('click', (e) => {
+    const optionsGroup = document.getElementById('optionsGroup');
+    const nextBtn = document.getElementById('nextBtn');
+    const selector = document.getElementById('worksheetSelector');
+    
+    optionsGroup.addEventListener('click', (e) => {
         const btn = e.target.closest('.choice-option');
         if (!btn || gameCompleted) return;
         const selectedIdx = parseInt(btn.dataset.optIndex);
         handleChoiceAnswer(selectedIdx);
     });
-    document.getElementById('nextBtn').addEventListener('click', goToNextChoiceQuestion);
-    document.getElementById('worksheetSelector').addEventListener('change', onWorksheetChange);
+    nextBtn.addEventListener('click', goToNextChoiceQuestion);
+    selector.addEventListener('change', onWorksheetChange);
 }
 
 function handleChoiceAnswer(selectedIdx) {
@@ -447,9 +463,20 @@ async function onWorksheetChange(e) {
     const newId = e.target.value;
     if (newId === currentWorksheetId) return;
     currentWorksheetId = newId;
+    
+    // 清理旧状态
+    stopTimer();
     currentContainer.innerHTML = '<div class="loading">載入中...</div>';
+    
     const success = await loadWorksheet(newId);
     if (!success) { currentContainer.innerHTML = '<p class="error">載入失敗</p>'; return; }
+    
+    // 重置游戏状态
+    currentIndex = 0;
+    correctCount = 0;
+    wrongCount = 0;
+    gameCompleted = false;
+    
     if (currentMode === 'belong') {
         selectRandomQuestions(8);
         renderBelongUI();
@@ -459,7 +486,6 @@ async function onWorksheetChange(e) {
     } else {
         renderFillUI();
     }
-    startTimer();
 }
 
 // ========== 樣式 ==========
