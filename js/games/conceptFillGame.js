@@ -1,9 +1,9 @@
 /**
  * 溫習區遊戲模塊（多模式支持）
- * - fill: 填空下拉（ws1）
- * - belong: 雙按鈕屬於/不屬於（ws2）
- * - choice: 四選一選擇題（ws3）
- * 修正：手機切換工作紙後事件綁定問題
+ * - fill: 填空下拉
+ * - belong: 雙按鈕屬於/不屬於
+ * - choice: 四選一選擇題
+ * - venn: 溫氏圖選擇題（Canvas繪製）
  */
 
 const db = window.rdb?.db;
@@ -58,6 +58,9 @@ export async function init(options = {}) {
     } else if (currentMode === 'choice') {
         selectRandomQuestions(8);
         renderChoiceUI();
+    } else if (currentMode === 'venn') {
+        selectRandomQuestions(8);
+        renderVennUI();
     } else {
         renderFillUI();
     }
@@ -120,7 +123,7 @@ function selectRandomQuestions(count) {
 }
 
 function startTimer() {
-    stopTimer(); // 确保清除旧计时器
+    stopTimer();
     timerSeconds = 0;
     timerInterval = setInterval(() => {
         timerSeconds++;
@@ -298,16 +301,10 @@ function renderBelongQuestion(index) {
 }
 
 function bindBelongEvents() {
-    const belongBtn = document.getElementById('belongBtn');
-    const notBelongBtn = document.getElementById('notBelongBtn');
-    const nextBtn = document.getElementById('nextBtn');
-    const selector = document.getElementById('worksheetSelector');
-    
-    // 移除旧监听器（通过替换DOM已自动清除，这里直接绑定新监听器）
-    belongBtn.addEventListener('click', () => handleBelongAnswer('∈'));
-    notBelongBtn.addEventListener('click', () => handleBelongAnswer('∉'));
-    nextBtn.addEventListener('click', goToNextBelongQuestion);
-    selector.addEventListener('change', onWorksheetChange);
+    document.getElementById('belongBtn').addEventListener('click', () => handleBelongAnswer('∈'));
+    document.getElementById('notBelongBtn').addEventListener('click', () => handleBelongAnswer('∉'));
+    document.getElementById('nextBtn').addEventListener('click', goToNextBelongQuestion);
+    document.getElementById('worksheetSelector').addEventListener('change', onWorksheetChange);
 }
 
 function handleBelongAnswer(selected) {
@@ -397,18 +394,14 @@ function renderChoiceQuestion(index) {
 }
 
 function bindChoiceEvents() {
-    const optionsGroup = document.getElementById('optionsGroup');
-    const nextBtn = document.getElementById('nextBtn');
-    const selector = document.getElementById('worksheetSelector');
-    
-    optionsGroup.addEventListener('click', (e) => {
+    document.getElementById('optionsGroup').addEventListener('click', (e) => {
         const btn = e.target.closest('.choice-option');
         if (!btn || gameCompleted) return;
         const selectedIdx = parseInt(btn.dataset.optIndex);
         handleChoiceAnswer(selectedIdx);
     });
-    nextBtn.addEventListener('click', goToNextChoiceQuestion);
-    selector.addEventListener('change', onWorksheetChange);
+    document.getElementById('nextBtn').addEventListener('click', goToNextChoiceQuestion);
+    document.getElementById('worksheetSelector').addEventListener('change', onWorksheetChange);
 }
 
 function handleChoiceAnswer(selectedIdx) {
@@ -459,36 +452,244 @@ function resetChoiceGame() {
     startTimer();
 }
 
+// ========== Venn 模式（新增） ==========
+function renderVennUI() {
+    stopTimer();
+    const worksheetOptions = worksheetList.map(ws => 
+        `<option value="${ws.id}" ${ws.id === currentWorksheetId ? 'selected' : ''}>${ws.title}</option>`
+    ).join('');
+
+    const html = `
+        <div class="venn-game-container">
+            <div class="game-header"><h2>📊 溫氏圖識別</h2><div class="timer-display" id="timerDisplay">00:00</div></div>
+            <div class="worksheet-selector"><label>📋 選擇工作紙：</label><select id="worksheetSelector">${worksheetOptions}</select></div>
+            <div class="progress-indicator"><span id="progressText">第 1 / ${selectedQuestions.length} 題</span></div>
+            <div class="question-card">
+                <div class="question-text" id="questionText"></div>
+                <div class="venn-options-grid" id="vennOptions"></div>
+                <div class="feedback-area" id="feedbackArea"></div>
+            </div>
+            <div class="game-footer"><button class="btn btn-outline" id="nextBtn" disabled>下一題 ➡️</button></div>
+            <div class="result-panel" id="resultPanel" style="display: none;"></div>
+        </div>
+    `;
+    currentContainer.innerHTML = html;
+    renderVennQuestion(0);
+    bindVennEvents();
+    addVennStyles();
+    startTimer();
+}
+
+function calculateVennLayout(A, B, width, height) {
+    const lenA = A.length;
+    const lenB = B.length;
+    const baseR = Math.min(width, height) * 0.15;
+    const scale = 3;
+    let rA = Math.max(baseR, baseR + lenA * scale);
+    let rB = Math.max(baseR, baseR + lenB * scale);
+    const maxR = Math.min(width, height) * 0.35;
+    rA = Math.min(rA, maxR);
+    rB = Math.min(rB, maxR);
+    const inter = A.filter(x => B.includes(x));
+    const onlyA = A.filter(x => !B.includes(x));
+    const onlyB = B.filter(x => !A.includes(x));
+    let distance;
+    if (inter.length === 0) {
+        distance = rA + rB + 15;
+    } else if (onlyA.length === 0 || onlyB.length === 0) {
+        distance = Math.abs(rA - rB) * 0.5;
+    } else {
+        const overlap = inter.length / Math.max(A.length, B.length);
+        distance = rA + rB - (rA + rB) * overlap * 0.8;
+        distance = Math.max(Math.abs(rA - rB) + 10, distance);
+    }
+    const cxA = width/2 - distance/2;
+    const cxB = width/2 + distance/2;
+    const cy = height * 0.5;
+    return { cxA, cxB, cy, rA, rB };
+}
+
+function drawVennCanvas(canvas, S, A, B, inter) {
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width, height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, width - 20, height - 20);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(10, 10, width - 20, height - 20);
+    
+    const { cxA, cxB, cy, rA, rB } = calculateVennLayout(A, B, width, height);
+    
+    ctx.beginPath();
+    ctx.arc(cxA, cy, rA, 0, 2*Math.PI);
+    ctx.fillStyle = 'rgba(239,68,68,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.arc(cxB, cy, rB, 0, 2*Math.PI);
+    ctx.fillStyle = 'rgba(59,130,246,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = '#3b82f6';
+    ctx.stroke();
+    
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#1e293b';
+    ctx.textAlign = 'center';
+    
+    const inAorB = new Set([...A, ...B]);
+    const outside = S.filter(x => !inAorB.has(x));
+    if (outside.length > 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(outside.slice(0,4).join(',') + (outside.length>4?'…':''), width/2, 22);
+    }
+    if (inter.length > 0) {
+        ctx.fillStyle = '#7e22ce';
+        ctx.fillText(inter.slice(0,3).join(',') + (inter.length>3?'…':''), (cxA+cxB)/2, cy);
+    }
+    const onlyA = A.filter(x => !inter.includes(x));
+    if (onlyA.length > 0) {
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillText(onlyA.slice(0,3).join(',') + (onlyA.length>3?'…':''), cxA - rA*0.5, cy - 10);
+    }
+    const onlyB = B.filter(x => !inter.includes(x));
+    if (onlyB.length > 0) {
+        ctx.fillStyle = '#1d4ed8';
+        ctx.fillText(onlyB.slice(0,3).join(',') + (onlyB.length>3?'…':''), cxB + rB*0.5, cy - 10);
+    }
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText('A', cxA - rA*0.8, cy - rA*0.7);
+    ctx.fillStyle = '#3b82f6';
+    ctx.fillText('B', cxB + rB*0.8, cy - rB*0.7);
+}
+
+function renderVennQuestion(index) {
+    if (index >= selectedQuestions.length) { finishVennGame(); return; }
+    const q = selectedQuestions[index];
+    document.getElementById('questionText').textContent = q.q;
+    document.getElementById('progressText').textContent = `第 ${index+1} / ${selectedQuestions.length} 題`;
+    const container = document.getElementById('vennOptions');
+    let html = '';
+    q.options.forEach((opt, i) => {
+        html += `<div class="venn-option-card" data-opt-index="${i}">
+            <div class="venn-option-label">${String.fromCharCode(65+i)}</div>
+            <canvas width="280" height="180" class="venn-canvas" id="vennCanvas-${i}"></canvas>
+        </div>`;
+    });
+    container.innerHTML = html;
+    q.options.forEach((opt, i) => {
+        const canvas = document.getElementById(`vennCanvas-${i}`);
+        drawVennCanvas(canvas, q.S, opt.A, opt.B, opt.inter);
+    });
+    document.getElementById('feedbackArea').innerHTML = '';
+    document.getElementById('feedbackArea').className = 'feedback-area';
+    document.getElementById('nextBtn').disabled = true;
+    gameCompleted = false;
+}
+
+function bindVennEvents() {
+    document.getElementById('vennOptions').addEventListener('click', (e) => {
+        const card = e.target.closest('.venn-option-card');
+        if (!card || gameCompleted) return;
+        const idx = parseInt(card.dataset.optIndex);
+        handleVennAnswer(idx);
+    });
+    document.getElementById('nextBtn').addEventListener('click', goToNextVennQuestion);
+    document.getElementById('worksheetSelector').addEventListener('change', onWorksheetChange);
+}
+
+function handleVennAnswer(selectedIdx) {
+    if (gameCompleted) return;
+    const q = selectedQuestions[currentIndex];
+    const isCorrect = (selectedIdx === q.a);
+    const cards = document.querySelectorAll('.venn-option-card');
+    cards.forEach(c => c.style.pointerEvents = 'none');
+    const fb = document.getElementById('feedbackArea');
+    if (isCorrect) {
+        correctCount++; incrementCorrect();
+        fb.innerHTML = '✅ 正確！'; fb.className = 'feedback-area correct';
+        cards[selectedIdx].classList.add('venn-correct');
+    } else {
+        wrongCount++; incrementWrong();
+        fb.innerHTML = `❌ 答錯了，正確答案是 ${String.fromCharCode(65+q.a)}。`;
+        fb.className = 'feedback-area wrong';
+        cards[selectedIdx].classList.add('venn-wrong');
+        cards[q.a].classList.add('venn-correct');
+    }
+    document.getElementById('nextBtn').disabled = false;
+    gameCompleted = true;
+}
+
+function goToNextVennQuestion() {
+    currentIndex++;
+    if (currentIndex < selectedQuestions.length) renderVennQuestion(currentIndex);
+    else finishVennGame();
+}
+
+function finishVennGame() {
+    stopTimer();
+    document.querySelector('.question-card').style.display = 'none';
+    document.querySelector('.progress-indicator').style.display = 'none';
+    document.querySelector('.game-footer').style.display = 'none';
+    const rp = document.getElementById('resultPanel');
+    rp.innerHTML = `<span class="final-score">${correctCount} / ${selectedQuestions.length}</span><span class="final-message">${correctCount===selectedQuestions.length?'🎉 滿分！':'👍 繼續加油'}</span><button class="btn btn-primary" id="playAgainBtn">🔄 再玩一次</button>`;
+    rp.style.display = 'block';
+    document.getElementById('playAgainBtn').addEventListener('click', resetVennGame);
+    if (recordCompletion) recordCompletion(timerSeconds*1000, correctCount, wrongCount);
+    fetchLeaderboard();
+}
+
+function resetVennGame() {
+    currentIndex = 0; correctCount = 0; wrongCount = 0; gameCompleted = false;
+    selectRandomQuestions(8);
+    renderVennUI();
+    startTimer();
+}
+
+function addVennStyles() {
+    if (document.getElementById('vennStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'vennStyles';
+    style.textContent = `
+        .venn-game-container { max-width: 900px; margin: 0 auto; }
+        .venn-options-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 20px 0; }
+        .venn-option-card { background: #f1f5f9; border-radius: 20px; padding: 16px; cursor: pointer; border: 3px solid transparent; transition: 0.2s; text-align: center; }
+        .venn-option-card:hover { background: #e2e8f0; }
+        .venn-option-card.venn-correct { border-color: #22c55e; background: #dcfce7; }
+        .venn-option-card.venn-wrong { border-color: #ef4444; background: #fee2e2; }
+        .venn-option-label { font-weight: 700; margin-bottom: 8px; }
+        .venn-canvas { max-width: 100%; height: auto; background: white; border-radius: 12px; }
+    `;
+    document.head.appendChild(style);
+}
+
+// ========== 通用 ==========
 async function onWorksheetChange(e) {
     const newId = e.target.value;
     if (newId === currentWorksheetId) return;
     currentWorksheetId = newId;
-    
-    // 清理旧状态
     stopTimer();
     currentContainer.innerHTML = '<div class="loading">載入中...</div>';
-    
     const success = await loadWorksheet(newId);
     if (!success) { currentContainer.innerHTML = '<p class="error">載入失敗</p>'; return; }
-    
-    // 重置游戏状态
-    currentIndex = 0;
-    correctCount = 0;
-    wrongCount = 0;
-    gameCompleted = false;
-    
+    currentIndex = 0; correctCount = 0; wrongCount = 0; gameCompleted = false;
     if (currentMode === 'belong') {
         selectRandomQuestions(8);
         renderBelongUI();
     } else if (currentMode === 'choice') {
         selectRandomQuestions(8);
         renderChoiceUI();
+    } else if (currentMode === 'venn') {
+        selectRandomQuestions(8);
+        renderVennUI();
     } else {
         renderFillUI();
     }
 }
 
-// ========== 樣式 ==========
 function addFillStyles() {
     if (document.getElementById('fillStyles')) return;
     const style = document.createElement('style');
